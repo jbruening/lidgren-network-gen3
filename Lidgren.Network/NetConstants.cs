@@ -30,10 +30,11 @@ namespace Lidgren.Network
 		internal const int NetChannelsPerDeliveryMethod = 32;
 
 		internal const int NumSequenceNumbers = 1024;
+		internal const int NumSequenceNumberMask = NumSequenceNumbers - 1;
 
 		internal const int HeaderByteSize = 5;
 
-		internal const int UnreliableWindowSize = 128;
+		internal const int UnreliableWindowSize = 1024;
 		internal const int ReliableOrderedWindowSize = 64;
 		internal const int ReliableSequencedWindowSize = 64;
 		internal const int DefaultWindowSize = 64;

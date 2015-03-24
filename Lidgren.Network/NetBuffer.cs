@@ -70,6 +70,37 @@ namespace Lidgren.Network
 			get { return (int)(m_readPosition / 8); }
 		}
 		
+        /// <summary>
+        /// Gets the remaining number of bits in the buffer to be read
+        /// </summary>
+	    public long RemainingBits
+	    {
+            get { return (long)(m_bitLength - m_readPosition); }
+	    }
+        
+        /// <summary>
+        /// Clones this buffer into dest
+        /// </summary>
+        /// <param name="dest"></param>
+        public void Clone(NetBuffer dest)
+        {
+            dest.m_data = new byte[m_data.Length];
+
+            Buffer.BlockCopy(m_data, 0, dest.m_data, 0, m_data.Length);
+            //foreach loops are faster in release builds until about 32k of bytes. supposedly. probably has something to do with the method call taking time.
+            //dest.m_data = new byte[m_data.Length];
+            //var i = 0;
+            //foreach (var by in m_data)
+            //{
+            //    dest.m_data[i] = by;
+            //    ++i;
+            //}
+
+            //set other values...
+            dest.m_bitLength = m_bitLength;
+            dest.m_readPosition = 0;
+        }
+
 		static NetBuffer()
 		{
 			s_readMethods = new Dictionary<Type, MethodInfo>();

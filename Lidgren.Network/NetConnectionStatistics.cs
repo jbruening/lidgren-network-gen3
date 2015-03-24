@@ -185,7 +185,7 @@ namespace Lidgren.Network
 				if (relSendChan != null)
 				{
 					for (int i = 0; i < relSendChan.m_storedMessages.Length; i++)
-						if (relSendChan.m_storedMessages[i].Message != null)
+						if ((relSendChan.m_usedStoredMessages & ((ulong)1 << i)) != 0)
 							numStored++;
 				}
 			}
