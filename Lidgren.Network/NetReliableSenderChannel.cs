@@ -14,6 +14,7 @@ namespace Lidgren.Network
 		private int m_sendStart;
 
 		private NetBitVector m_receivedAcks;
+		internal ulong m_usedStoredMessages; // "used" bits for storedMessages
 		internal NetStoredReliableMessage[] m_storedMessages;
 
 		internal double m_resendDelay;
@@ -27,6 +28,8 @@ namespace Lidgren.Network
 			m_windowStart = 0;
 			m_sendStart = 0;
 			m_receivedAcks = new NetBitVector(NetConstants.NumSequenceNumbers);
+			NetException.Assert(m_windowSize <= 64); // we do only have sizeof(ulong)*8 "used" bits in m_usedStoredMessages
+			m_usedStoredMessages = 0;
 			m_storedMessages = new NetStoredReliableMessage[m_windowSize];
 			m_queuedSends = new NetQueue<NetOutgoingMessage>(8);
 			m_resendDelay = m_connection.GetResendDelay();
@@ -34,7 +37,7 @@ namespace Lidgren.Network
 
 		internal override int GetAllowedSends()
 		{
-			int retval = m_windowSize - ((m_sendStart + NetConstants.NumSequenceNumbers) - m_windowStart) % NetConstants.NumSequenceNumbers;
+			int retval = m_windowSize - ((m_sendStart + NetConstants.NumSequenceNumbers) - m_windowStart) & NetConstants.NumSequenceNumberMask;
 			NetException.Assert(retval >= 0 && retval <= m_windowSize);
 			return retval;
 		}
@@ -64,8 +67,13 @@ namespace Lidgren.Network
 			//
 			// resends
 			//
+			if (m_usedStoredMessages != 0)
+			{
 			for (int i = 0; i < m_storedMessages.Length; i++)
 			{
+				if ((m_usedStoredMessages & ((ulong)1 << i)) == 0)
+					continue;
+                
 				var storedMsg = m_storedMessages[i];
 				NetOutgoingMessage om = storedMsg.Message;
 				if (om == null)
@@ -97,17 +105,22 @@ namespace Lidgren.Network
 					m_storedMessages[i].NumSent++;
 				}
 			}
+			}
 
 			int num = GetAllowedSends();
-			if (num < 1)
+			if (num == 1)
 				return;
 
 			// queued sends
-			while (num > 0 && m_queuedSends.Count > 0)
+			int queued = m_queuedSends.Count;
+			while (num > 0 && queued > 0)
 			{
 				NetOutgoingMessage om;
 				if (m_queuedSends.TryDequeue(out om))
+				{
 					ExecuteSend(now, om);
+					queued--;
+				}
 				num--;
 				NetException.Assert(num == GetAllowedSends());
 			}
@@ -116,7 +129,7 @@ namespace Lidgren.Network
 		private void ExecuteSend(double now, NetOutgoingMessage message)
 		{
 			int seqNr = m_sendStart;
-			m_sendStart = (m_sendStart + 1) % NetConstants.NumSequenceNumbers;
+			m_sendStart = (m_sendStart + 1) & NetConstants.NumSequenceNumberMask;
 
 			// must increment recycle count here, since it's decremented in QueueSendMessage and we want to keep it for the future in case or resends
 			// we will decrement once more in DestoreMessage for final recycling
@@ -125,8 +138,9 @@ namespace Lidgren.Network
 			m_connection.QueueSendMessage(message, seqNr);
 
 			int storeIndex = seqNr % m_windowSize;
-			NetException.Assert(m_storedMessages[storeIndex].Message == null);
+			NetException.Assert((m_usedStoredMessages & ((ulong)1 << storeIndex)) == 0);
 
+			m_usedStoredMessages |= (ulong)1 << storeIndex; // set used bit
 			m_storedMessages[storeIndex].NumSent++;
 			m_storedMessages[storeIndex].Message = message;
 			m_storedMessages[storeIndex].LastSent = now;
@@ -159,6 +173,7 @@ namespace Lidgren.Network
 #if !DEBUG
 			}
 #endif
+			m_usedStoredMessages &= ~((ulong)1 << storeIndex); // clear used bit
 			m_storedMessages[storeIndex] = new NetStoredReliableMessage();
 		}
 
@@ -185,7 +200,7 @@ namespace Lidgren.Network
 				bool resetTimeout;
 				m_receivedAcks[m_windowStart] = false;
 				DestoreMessage(now, m_windowStart % m_windowSize, out resetTimeout);
-				m_windowStart = (m_windowStart + 1) % NetConstants.NumSequenceNumbers;
+				m_windowStart = (m_windowStart + 1) & NetConstants.NumSequenceNumberMask;
 
 				// advance window if we already have early acks
 				while (m_receivedAcks.Get(m_windowStart))
@@ -196,8 +211,8 @@ namespace Lidgren.Network
 					DestoreMessage(now, m_windowStart % m_windowSize, out rt);
 					resetTimeout |= rt;
 
-					NetException.Assert(m_storedMessages[m_windowStart % m_windowSize].Message == null); // should already be destored
-					m_windowStart = (m_windowStart + 1) % NetConstants.NumSequenceNumbers;
+					NetException.Assert((m_usedStoredMessages & ((ulong)1 << (m_windowStart % m_windowSize))) == 0); // should already be destored
+					m_windowStart = (m_windowStart + 1) & NetConstants.NumSequenceNumberMask;
 					//m_connection.m_peer.LogDebug("Advancing window to #" + m_windowStart);
 				}
 				if (resetTimeout)

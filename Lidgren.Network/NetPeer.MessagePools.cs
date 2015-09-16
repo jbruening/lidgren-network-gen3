@@ -6,6 +6,8 @@ namespace Lidgren.Network
 {
 	public partial class NetPeer
 	{
+        private Stack<byte[]>[] _byteRecycle;
+
 		internal List<byte[]> m_storagePool;
 		private NetQueue<NetOutgoingMessage> m_outgoingMessagesPool;
 		private NetQueue<NetIncomingMessage> m_incomingMessagesPool;
@@ -32,12 +34,48 @@ namespace Lidgren.Network
 			}
 
 			m_maxCacheCount = m_configuration.RecycledCacheMaxCount;
+
+            var recycle = new Stack<byte[]>[32];
+            //technically, 0 will always be skipped, but nulls are bad.
+            for (int i = 0; i < recycle.Length; i++)
+            {
+                recycle[i] = new Stack<byte[]>(m_maxCacheCount);
+            }
+            _byteRecycle = recycle;
 		}
 
 		internal byte[] GetStorage(int minimumCapacityInBytes)
 		{
 			if (m_storagePool == null)
 				return new byte[minimumCapacityInBytes];
+
+            //no less than two bytes
+            var size = Math.Max(2, minimumCapacityInBytes);
+            //just increase size to the next power of two, and return that
+            size--;
+            size |= size >> 1;   // Divide by 2^k for consecutive doublings of k up to 32,
+            size |= size >> 2;   // and then or the results.
+            size |= size >> 4;
+            size |= size >> 8;
+            size |= size >> 16;
+            size++;
+            var n = log2(size);
+
+            //try and pop a byte array to reuse
+            byte[] data = null;
+            var stack = _byteRecycle[n];
+            lock (stack)
+                if (stack.Count > 0)
+                {
+                    data = stack.Pop();
+                }
+
+		    if (data != null)
+		    {
+		        return data;
+		    }
+		    m_statistics.m_bytesAllocated += size;
+            return new byte[size];
 
 			lock (m_storagePool)
 			{
@@ -57,10 +95,30 @@ namespace Lidgren.Network
 			return new byte[minimumCapacityInBytes];
 		}
 
+        private static int log2(int n)
+        {
+            int targetLevel = 0;
+            while ((n >>= 1) != 0) ++targetLevel;
+            return targetLevel;
+        }
+        private static bool IsPowerOfTwo(int x)
+        {
+            return ((x != 0) && (x & (x - 1)) == 0);
+        }
+
 		internal void Recycle(byte[] storage)
 		{
 			if (m_storagePool == null || storage == null)
 				return;
+
+            if (!IsPowerOfTwo(storage.Length)) return;
+
+            var n = log2(storage.Length);
+            var stack = _byteRecycle[n];
+            lock (stack)
+                if (stack.Count < m_maxCacheCount)
+                    stack.Push(storage);
+		    return;
 
 			lock (m_storagePool)
 			{
@@ -183,7 +241,7 @@ namespace Lidgren.Network
 				Recycle(im);
 		}
 
-		internal void Recycle(NetOutgoingMessage msg)
+		public void Recycle(NetOutgoingMessage msg)
 		{
 			if (m_outgoingMessagesPool == null)
 				return;

@@ -36,7 +36,11 @@ namespace Lidgren.Network
 		{
 			if (!m_doFlowControl)
 				return 2; // always allowed to send without flow control!
-			int retval = m_windowSize - ((m_sendStart + NetConstants.NumSequenceNumbers) - m_windowStart) % m_windowSize;
+
+			int subtract = (m_sendStart + NetConstants.NumSequenceNumbers) - m_windowStart;
+			while (subtract >= m_windowSize)
+				subtract -= m_windowSize;
+			int retval = m_windowSize - subtract;
 			NetException.Assert(retval >= 0 && retval <= m_windowSize);
 			return retval;
 		}
@@ -68,15 +72,19 @@ namespace Lidgren.Network
 		internal override void SendQueuedMessages(double now)
 		{
 			int num = GetAllowedSends();
-			if (num < 1)
+			if (num == 0)
 				return;
 
 			// queued sends
-			while (num > 0 && m_queuedSends.Count > 0)
+			int queued = m_queuedSends.Count;
+			while (queued > 0 && num > 0)
 			{
 				NetOutgoingMessage om;
 				if (m_queuedSends.TryDequeue(out om))
+				{
 					ExecuteSend(om);
+					queued--;
+				}
 				num--;
 			}
 		}
@@ -86,7 +94,7 @@ namespace Lidgren.Network
 			m_connection.m_peer.VerifyNetworkThread();
 
 			int seqNr = m_sendStart;
-			m_sendStart = (m_sendStart + 1) % NetConstants.NumSequenceNumbers;
+			m_sendStart = (m_sendStart + 1) & NetConstants.NumSequenceNumberMask;
 
 			m_connection.QueueSendMessage(message, seqNr);
 
@@ -124,7 +132,7 @@ namespace Lidgren.Network
 				NetException.Assert(seqNr == m_windowStart);
 
 				m_receivedAcks[m_windowStart] = false;
-				m_windowStart = (m_windowStart + 1) % NetConstants.NumSequenceNumbers;
+				m_windowStart = (m_windowStart + 1) & NetConstants.NumSequenceNumberMask;
 
 				return;
 			}
@@ -135,7 +143,7 @@ namespace Lidgren.Network
 			while (m_windowStart != seqNr)
 			{
 				m_receivedAcks[m_windowStart] = false;
-				m_windowStart = (m_windowStart + 1) % NetConstants.NumSequenceNumbers;
+				m_windowStart = (m_windowStart + 1) & NetConstants.NumSequenceNumberMask;
 			}
 		}
 	}

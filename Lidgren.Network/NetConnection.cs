@@ -24,6 +24,8 @@ namespace Lidgren.Network
 		internal NetConnectionStatus m_outputtedStatus; // status that has been sent as StatusChanged message
 		internal NetConnectionStatus m_visibleStatus; // status visible by querying the Status property
 		internal NetEndPoint m_remoteEndPoint;
+		internal int m_usedSendChannelsCount;
+		internal NetSenderChannelBase[] m_usedSendChannels;
 		internal NetSenderChannelBase[] m_sendChannels;
 		internal NetReceiverChannelBase[] m_receiveChannels;
 		internal NetOutgoingMessage m_localHailMessage;
@@ -91,6 +93,8 @@ namespace Lidgren.Network
 			m_outputtedStatus = NetConnectionStatus.None;
 			m_visibleStatus = NetConnectionStatus.None;
 			m_remoteEndPoint = remoteEndPoint;
+			m_usedSendChannelsCount = 0;
+			m_usedSendChannels = new NetSenderChannelBase[NetConstants.NumTotalChannels];
 			m_sendChannels = new NetSenderChannelBase[NetConstants.NumTotalChannels];
 			m_receiveChannels = new NetReceiverChannelBase[NetConstants.NumTotalChannels];
 			m_queuedOutgoingAcks = new NetQueue<NetTuple<NetMessageType, int>>(4);
@@ -208,7 +212,8 @@ namespace Lidgren.Network
 					m_sendBufferNumMessages++;
 
 					// write acks header
-					sendBuffer[m_sendBufferWritePtr++] = (byte)NetMessageType.Acknowledge;
+					const byte ackByte = (byte) NetMessageType.Acknowledge;
+					sendBuffer[m_sendBufferWritePtr++] = ackByte;
 					sendBuffer[m_sendBufferWritePtr++] = 0; // no sequence number
 					sendBuffer[m_sendBufferWritePtr++] = 0; // no sequence number
 					int len = (acks * 3) * 8; // bits
@@ -261,16 +266,13 @@ namespace Lidgren.Network
 			//
 			if (m_peer.m_executeFlushSendQueue)
 			{
-				for (int i = m_sendChannels.Length - 1; i >= 0; i--)    // Reverse order so reliable messages are sent first
+				for (int i = 0; i < m_usedSendChannelsCount; i++)
 				{
-					var channel = m_sendChannels[i];
+					var channel = m_usedSendChannels[i];
 					NetException.Assert(m_sendBufferWritePtr < 1 || m_sendBufferNumMessages > 0);
-					if (channel != null)
-					{
 						channel.SendQueuedMessages(now);
 						if (channel.QueuedSendsCount > 0)
 							m_peer.m_needFlushSendQueue = true; // failed to send all queued sends; likely a full window - need to try again
-					}
 					NetException.Assert(m_sendBufferWritePtr < 1 || m_sendBufferNumMessages > 0);
 				}
 			}
@@ -401,6 +403,14 @@ namespace Lidgren.Network
 							break;
 					}
 					m_sendChannels[channelSlot] = chan;
+
+                    // rebuild m_usedSendChannels
+                    m_usedSendChannelsCount = 0;
+                    for (int i = m_sendChannels.Length - 1; i >= 0; i--) // Reverse order so reliable messages are sent first
+                    {
+                        if (m_sendChannels[i] != null)
+                            m_usedSendChannels[m_usedSendChannelsCount++] = m_sendChannels[i];
+                    }
 				}
 			}
 

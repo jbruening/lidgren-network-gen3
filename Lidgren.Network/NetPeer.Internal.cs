@@ -398,7 +398,7 @@ namespace Lidgren.Network
 			if (m_socket == null)
 				return;
 
-			if (!m_socket.Poll(1000, SelectMode.SelectRead)) // wait up to 1 ms for data to arrive
+			if (!m_socket.Poll(15000, SelectMode.SelectRead)) // wait up to 15 ms for data to arrive
 				return;
 
 			//if (m_socket == null || m_socket.Available < 1)
