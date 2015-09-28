@@ -39,6 +39,7 @@ namespace Lidgren.Network
 		internal NetMessageType m_receivedMessageType;
 		internal bool m_isFragment;
 		internal double m_receiveTime;
+		internal int m_inUse;
 
 		/// <summary>
 		/// Gets the type of this incoming message
@@ -87,6 +88,7 @@ namespace Lidgren.Network
 			m_senderConnection = null;
 			m_bitLength = 0;
 			m_isFragment = false;
+			m_inUse = 0;
 		}
 
 		/// <summary>

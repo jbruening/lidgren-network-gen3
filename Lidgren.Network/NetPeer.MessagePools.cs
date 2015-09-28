@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace Lidgren.Network
 {
@@ -134,23 +135,20 @@ namespace Lidgren.Network
 		internal NetIncomingMessage CreateIncomingMessage(NetIncomingMessageType tp, byte[] useStorageData)
 		{
 			NetIncomingMessage retval;
-			if (m_incomingMessagesPool == null || !m_incomingMessagesPool.TryDequeue(out retval))
-				retval = new NetIncomingMessage(tp);
-			else
-				retval.m_incomingMessageType = tp;
+			do
+			{
+				if (m_incomingMessagesPool == null || !m_incomingMessagesPool.TryDequeue(out retval))
+					retval = new NetIncomingMessage(tp);
+			} while (Interlocked.CompareExchange(ref retval.m_inUse, 1, 0) != 0);
+			retval.m_incomingMessageType = tp;
+
 			retval.m_data = useStorageData;
 			return retval;
 		}
 
 		internal NetIncomingMessage CreateIncomingMessage(NetIncomingMessageType tp, int minimumByteSize)
 		{
-			NetIncomingMessage retval;
-			if (m_incomingMessagesPool == null || !m_incomingMessagesPool.TryDequeue(out retval))
-				retval = new NetIncomingMessage(tp);
-			else
-				retval.m_incomingMessageType = tp;
-			retval.m_data = GetStorage(minimumByteSize);
-			return retval;
+			return CreateIncomingMessage(tp, GetStorage(minimumByteSize));
 		}
 
 		/// <summary>
