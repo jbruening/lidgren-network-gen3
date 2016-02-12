@@ -13,6 +13,8 @@ namespace Lidgren.Network
 		private int m_windowSize;
 		private int m_sendStart;
 
+		private bool m_anyStoredResends;
+
 		private NetBitVector m_receivedAcks;
 		internal ulong m_usedStoredMessages; // "used" bits for storedMessages
 		internal NetStoredReliableMessage[] m_storedMessages;
@@ -21,12 +23,18 @@ namespace Lidgren.Network
 
 		internal override int WindowSize { get { return m_windowSize; } }
 
+		internal override bool NeedToSendMessages()
+		{
+			return base.NeedToSendMessages() || m_anyStoredResends;
+		}
+
 		internal NetReliableSenderChannel(NetConnection connection, int windowSize)
 		{
 			m_connection = connection;
 			m_windowSize = windowSize;
 			m_windowStart = 0;
 			m_sendStart = 0;
+			m_anyStoredResends = false;
 			m_receivedAcks = new NetBitVector(NetConstants.NumSequenceNumbers);
 			NetException.Assert(m_windowSize <= 64); // we do only have sizeof(ulong)*8 "used" bits in m_usedStoredMessages
 			m_usedStoredMessages = 0;
@@ -47,6 +55,7 @@ namespace Lidgren.Network
 			m_receivedAcks.Clear();
 			for (int i = 0; i < m_storedMessages.Length; i++)
 				m_storedMessages[i].Reset();
+			m_anyStoredResends = false;
 			m_queuedSends.Clear();
 			m_windowStart = 0;
 			m_sendStart = 0;
@@ -69,6 +78,7 @@ namespace Lidgren.Network
 			//
 			if (m_usedStoredMessages != 0)
 			{
+			m_anyStoredResends = false;
 			for (int i = 0; i < m_storedMessages.Length; i++)
 			{
 				if ((m_usedStoredMessages & ((ulong)1 << i)) == 0)
@@ -78,6 +88,8 @@ namespace Lidgren.Network
 				NetOutgoingMessage om = storedMsg.Message;
 				if (om == null)
 					continue;
+
+				m_anyStoredResends = true;
 
 				double t = storedMsg.LastSent;
 				if (t > 0 && (now - t) > m_resendDelay)
@@ -145,6 +157,7 @@ namespace Lidgren.Network
 			m_storedMessages[storeIndex].Message = message;
 			m_storedMessages[storeIndex].LastSent = now;
 			m_storedMessages[storeIndex].SequenceNumber = seqNr;
+			m_anyStoredResends = true;
 
 			return;
 		}

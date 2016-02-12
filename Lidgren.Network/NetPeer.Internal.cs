@@ -69,15 +69,8 @@ namespace Lidgren.Network
 				return;
 
 			// remove all callbacks regardless of sync context
-		RestartRemoveCallbacks:
-			for (int i = 0; i < m_receiveCallbacks.Count; i++)
-			{
-				if (m_receiveCallbacks[i].Item2.Equals(callback))
-				{
-					m_receiveCallbacks.RemoveAt(i);
-					goto RestartRemoveCallbacks;
-				}
-			}
+            m_receiveCallbacks.RemoveAll(tuple => tuple.Item2.Equals(callback));
+
 			if (m_receiveCallbacks.Count < 1)
 				m_receiveCallbacks = null;
 		}
@@ -446,7 +439,7 @@ namespace Lidgren.Network
 				if (m_upnp != null && now < m_upnp.m_discoveryResponseDeadline && bytesReceived > 32)
 				{
 					// is this an UPnP response?
-					string resp = System.Text.Encoding.ASCII.GetString(m_receiveBuffer, 0, bytesReceived);
+					string resp = System.Text.Encoding.UTF8.GetString(m_receiveBuffer, 0, bytesReceived);
 					if (resp.Contains("upnp:rootdevice") || resp.Contains("UPnP/1.0"))
 					{
 						try
