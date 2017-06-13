@@ -1,6 +1,7 @@
 ﻿#if __CONSTRAINED__ || UNITY_STANDALONE_LINUX || UNITY
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 
@@ -78,12 +79,13 @@ namespace Lidgren.Network
 
 	public static partial class NetTime
 	{
-		private static readonly long s_timeInitialized = Environment.TickCount;
-		
-		/// <summary>
-		/// Get number of seconds since the application started
-		/// </summary>
-		public static double Now { get { return (double)((uint)Environment.TickCount - s_timeInitialized) / 1000.0; } }
-	}
+        private static readonly long s_timeInitialized = Stopwatch.GetTimestamp();
+        private static readonly double s_dInvFreq = 1.0 / (double)Stopwatch.Frequency;
+
+        /// <summary>
+        /// Get number of seconds since the application started
+        /// </summary>
+        public static double Now { get { return (double)(Stopwatch.GetTimestamp() - s_timeInitialized) * s_dInvFreq; } }
+    }
 }
 #endif
